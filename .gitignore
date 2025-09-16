@@ -1,3 +1,19 @@
-fashint/
-dataimages/
+fashint/*
+!fashint/important_file.py
+!fashint/important_folder/
+
+# Ignore the entire dataimages directory except specific files
+dataimages/*
+!dataimages/logo.png
+!dataimages/required_folder/
+
+# Ignore Python virtual environments
 venv/
+pyenv.cfg
+
+# Ignore Python bytecode
+*.pyc
+__pycache__/
+
+# Ignore virtual environment libraries
+fashint/lib/
