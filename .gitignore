@@ -1,11 +1,7 @@
-# Fashint folder: ignore everything except important files/folders
-fashint/
-!fashint/important_file.py
-!fashint/important_folder/
-!fashint/important_folder/**
+# Ignore everything in dataimages
+dataimages/*
 
-# Dataimages folder: ignore everything except specific files/folders
-dataimages/
+# But keep these specific files/folders
 !dataimages/logo.png
 !dataimages/required_folder/
 !dataimages/required_folder/**
@@ -19,11 +15,4 @@ pyenv.cfg
 *.pyc
 __pycache__/
 
-fashint/lib/
-__pycache__/
-*.pyc
-dataimages/
-venv/
-dataimages/*
-!dataimages/logo.png
-!dataimages/required_folder/
+share/*
