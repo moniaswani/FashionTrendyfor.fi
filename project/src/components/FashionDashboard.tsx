@@ -27,7 +27,9 @@ interface Dataset {
   id: string;
   name: string;
   description: string;
-  brand: string;
+  designer: string;
+  season: string;
+  collection: string;
   s3Bucket: string;
   apiEndpoint: string;
 }
@@ -57,10 +59,16 @@ export function FashionDashboard({ dataset }: FashionDashboardProps) {
         
         const result = await response.json();
         
-        // Filter data by brand to only show items from the selected dataset
-        const filteredData = result.filter((item: FashionItem) => 
-          item.brand && item.brand.toLowerCase() === dataset.brand.toLowerCase()
-        );
+        // Filter data by designer and season to only show items from the selected dataset
+        const filteredData = result.filter((item: FashionItem) => {
+          const itemDesigner = (item.designer || item.brand || '').trim();
+          const itemSeason = (item.season || '').trim();
+          const datasetDesigner = dataset.designer.trim();
+          const datasetSeason = dataset.season.trim();
+          
+          // Exact match for both designer and season
+          return itemDesigner === datasetDesigner && itemSeason === datasetSeason;
+        });
         
         setRawData(filteredData);
         
@@ -83,7 +91,7 @@ export function FashionDashboard({ dataset }: FashionDashboardProps) {
     };
 
     fetchData();
-  }, [dataset.apiEndpoint, dataset.brand]);
+  }, [dataset]);
 
   // Helper function to determine correct S3 bucket for individual items
   const getS3BucketForItem = (item: FashionItem): string => {
@@ -261,7 +269,6 @@ export function FashionDashboard({ dataset }: FashionDashboardProps) {
             getUniqueColors={getUniqueColors}
             s3Bucket="runwayimages"
           />
-        
         ))}
       </div>
     </div>

@@ -5,6 +5,9 @@ interface Dataset {
   id: string;
   name: string;
   description: string;
+  designer: string;
+  season: string;
+  collection: string;
   s3Bucket: string;
   apiEndpoint: string;
 }

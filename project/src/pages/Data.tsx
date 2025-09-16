@@ -22,50 +22,39 @@ export function Data() {
         
         const data = await response.json();
         
-        // Auto-detect datasets based on brand and collection info
+        // Auto-detect datasets based on designer and season from DynamoDB
         const datasetMap = new Map();
         
         data.forEach((item: any) => {
-          const brand = item.brand || 'Unknown';
-          const collection = item.collection || 'Unknown collection';
-          const season = item.season || 'Unknown season';
-          const datasetId = `${brand.toLowerCase()}-${collection.toLowerCase().replace(/\s+/g, '-')}-${season.toLowerCase().replace(/\s+/g, '-')}`;
+          const designer = (item.designer || 'Unknown Designer').trim();
+          const season = (item.season || 'Unknown Season').trim();
+          const collection = item.collection || 'Ready To Wear';
+          const datasetId = `${designer.toLowerCase().replace(/\s+/g, '-')}-${season.toLowerCase().replace(/\s+/g, '-')}`;
           
           if (!datasetMap.has(datasetId)) {
-            // Map to actual S3 bucket names
-            let s3Bucket = 'fashion-intelligence-input'; // default
-            if (brand.toLowerCase() === 'chanel') {
-              if (season.toLowerCase().includes('fall') || season.toLowerCase().includes('winter')) {
-                s3Bucket = 'chanel-ready-to-wear-fall-winter-2025-paris';
-              } else {
-                s3Bucket = 'chanel-ready-to-wear-spring-summer-2025-paris';
-              }
-            } else if (brand.toLowerCase() === 'louis vuitton') {
-              if (season.toLowerCase().includes('fall') || season.toLowerCase().includes('winter')) {
-                s3Bucket = 'louis-vuitton-ready-to-wear-fall-winter-2025-paris';
-              } else {
-                s3Bucket = 'louis-vuitton-ready-to-wear-spring-summer-2025-paris';
-              }
-            } else if (brand.toLowerCase() === 'miu miu') {
-              if (season.toLowerCase().includes('fall') || season.toLowerCase().includes('winter')) {
-                s3Bucket = 'miu-miu-ready-to-wear-fall-winter-2025-paris';
-              } else {
-                s3Bucket = 'miu-miu-ready-to-wear-spring-summer-2025-paris';
-              }
-            }
-            
             datasetMap.set(datasetId, {
               id: datasetId,
-              name: `${brand} ${collection} - ${season}`,
-              description: `${collection} analysis from ${season}`,
-              brand: brand,
-              s3Bucket: s3Bucket,
+              name: `${designer} - ${season}`,
+              description: `${collection} collection from ${season}`,
+              designer: designer,
+              season: season,
+              collection: collection,
+              s3Bucket: 'runwayimages',
               apiEndpoint: API_ENDPOINT
             });
           }
         });
         
         const detectedDatasets = Array.from(datasetMap.values());
+        
+        // Sort datasets by designer, then by season
+        detectedDatasets.sort((a, b) => {
+          if (a.designer !== b.designer) {
+            return a.designer.localeCompare(b.designer);
+          }
+          return a.season.localeCompare(b.season);
+        });
+        
         setDatasets(detectedDatasets);
         
         // Set first dataset as default
