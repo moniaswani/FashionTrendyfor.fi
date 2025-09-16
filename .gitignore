@@ -18,3 +18,12 @@ pyenv.cfg
 # Python bytecode
 *.pyc
 __pycache__/
+
+fashint/lib/
+__pycache__/
+*.pyc
+dataimages/
+venv/
+dataimages/*
+!dataimages/logo.png
+!dataimages/required_folder/
