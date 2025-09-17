@@ -16,3 +16,5 @@ pyenv.cfg
 __pycache__/
 
 share/*
+
+images/*
