@@ -93,8 +93,8 @@ export function FashionDashboard({ dataset }: FashionDashboardProps) {
     fetchData();
   }, [dataset]);
 
-  // Helper function to determine correct S3 bucket for individual items
-  const getS3BucketForItem = (item: FashionItem): string => {
+  // Helper function to determine correct S3 folder path for individual items
+  const getS3FolderPathForItem = (item: FashionItem): string => {
     const brand = item.brand.toLowerCase();
     const imageName = item.original_image_name.toLowerCase();
     
@@ -151,12 +151,27 @@ export function FashionDashboard({ dataset }: FashionDashboardProps) {
   };
 
   const formatDistributionData = (distribution: DistributionData, type: 'color' | 'item' | 'material') => {
-    return Object.entries(distribution)
+    const entries = Object.entries(distribution)
       .sort(([,a], [,b]) => b - a)
-      .slice(0, 10)
-      .map(([name, value]) => ({
+      .slice(0, 10);
+    
+    if (type === 'color') {
+      // For colors, we need to find the hex value from rawData
+      return entries.map(([name, value]) => {
+        const colorItem = rawData.find(item => 
+          item.color_name.charAt(0).toUpperCase() + item.color_name.slice(1) === name
+        );
+        return {
+          name,
+          value,
+          color: colorItem?.color_hex || '#808080'
+        };
+      });
+    }
+    
+    return entries.map(([name, value]) => ({
         name,
-        value,
+        value
       }));
   };
 
@@ -207,15 +222,15 @@ export function FashionDashboard({ dataset }: FashionDashboardProps) {
       <div>
         <h3 className="text-2xl font-semibold text-gray-800 mb-6 text-center">Fashion analysis overview</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          <div className="bg-white rounded-lg shadow-md p-6">
+          <div className="bg-green-50 border border-green-200 rounded-lg shadow-md p-6">
             <div className="flex items-center justify-center mb-4">
               <Palette className="w-5 h-5 text-green-600 mr-2" />
               <h4 className="text-lg font-semibold text-gray-800">Color distribution</h4>
             </div>
             <div className="flex justify-center">
               <PieChart 
-                data={formatDistributionData(calculateColorDistribution(), 'item')} 
-                type="item"
+                data={formatDistributionData(calculateColorDistribution(), 'color')} 
+                type="color"
                 size={240}
                 showAll={showAllColors}
                 onToggleShowAll={() => setShowAllColors(!showAllColors)}
@@ -223,7 +238,7 @@ export function FashionDashboard({ dataset }: FashionDashboardProps) {
             </div>
           </div>
           
-          <div className="bg-white rounded-lg shadow-md p-6">
+          <div className="bg-green-50 border border-green-200 rounded-lg shadow-md p-6">
             <div className="flex items-center justify-center mb-4">
               <Shirt className="w-5 h-5 text-green-600 mr-2" />
               <h4 className="text-lg font-semibold text-gray-800">Clothing items</h4>
@@ -239,7 +254,7 @@ export function FashionDashboard({ dataset }: FashionDashboardProps) {
             </div>
           </div>
           
-          <div className="bg-white rounded-lg shadow-md p-6">
+          <div className="bg-green-50 border border-green-200 rounded-lg shadow-md p-6">
             <div className="flex items-center justify-center mb-4">
               <Package className="w-5 h-5 text-green-600 mr-2" />
               <h4 className="text-lg font-semibold text-gray-800">Materials</h4>
@@ -267,6 +282,7 @@ export function FashionDashboard({ dataset }: FashionDashboardProps) {
             items={items}
             getUniqueItems={getUniqueItems}
             getUniqueColors={getUniqueColors}
+            getS3FolderPathForItem={getS3FolderPathForItem}
             s3Bucket="runwayimages"
           />
         ))}
@@ -281,27 +297,40 @@ interface FashionCardProps {
   items: FashionItem[];
   getUniqueItems: (items: FashionItem[], key: keyof FashionItem) => string[];
   getUniqueColors: (items: FashionItem[]) => { name: string; hex: string }[];
+  getS3FolderPathForItem: (item: FashionItem) => string;
   s3Bucket: string;
 }
 
-function slugifyPath(brand: string, collection: string, season: string) {
-  return `${brand}-${collection}-${season}-paris`
-    .toLowerCase()
-    .replace(/\s+/g, '-');
+const folderMap: Record<string, Record<string, string>> = {
+  'louis vuitton': {
+    'fall-winter-2025': 'louis-vuitton-ready-to-wear-fall-winter-2025-paris',
+    'spring-summer-2025': 'louis-vuitton-ready-to-wear-spring-winter-2025-paris', // maps to actual folder
+  },
+  'chanel': {
+    'fall-winter-2025': 'chanel-ready-to-wear-fall-winter-2025-paris',
+    'spring-summer-2025': 'chanel-ready-to-wear-spring-winter-2025-paris',
+  },
+  'miu miu': {
+    'fall-winter-2025': 'miu-miu-ready-to-wear-fall-winter-2025-paris',
+    'spring-summer-2025': 'miu-miu-ready-to-wear-spring-winter-2025-paris',
+  },
+};
+
+function getFolder(brand: string, season: string) {
+  const brandKey = brand.toLowerCase();
+  const seasonKey = season.toLowerCase().replace(/\s+/g, '-'); // "spring-summer-2025"
+  return folderMap[brandKey]?.[seasonKey] || 'fashion-intelligence-input';
 }
 
 function FashionCard({ imageName, items, getUniqueItems, getUniqueColors, s3Bucket }: FashionCardProps) {
   const [imageError, setImageError] = useState(false);
 
-  const brand = items[0]?.brand || "unknown";
-  const collection = items[0]?.collection || "collection";
-  const season = items[0]?.season || "season";
-
-  // ✅ Force folder to include "-paris"
-  const folder = slugifyPath(brand, collection, season);
+  const item = items[0];
+  const folder = getFolder(item.brand, item.season);
 
   const imageUrl = `https://${s3Bucket}.s3.eu-west-2.amazonaws.com/${folder}/${imageName}`;
   console.log("Resolved image URL:", imageUrl);
+
 
   const uniqueClothing = getUniqueItems(items, 'item_name');
   const uniqueColors = getUniqueColors(items);
