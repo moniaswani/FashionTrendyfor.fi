@@ -8,13 +8,13 @@ def scrape_images_from_page(page_url):
         "User-Agent": "Mozilla/5.0 (compatible; ImageScraper/1.0; +https://example.com/bot)"
     }
 
-    # Parse page URL to build folder name
+    # Parse page URL to build subfolder name
     parsed_page = urlparse(page_url)
-    if parsed_page.netloc == "nowfashion.com":
-        path_after = parsed_page.path.strip('/')
-    else:
-        path_after = parsed_page.netloc + parsed_page.path
-    folder_name = f"images_{path_after.replace('/', '_')}"
+    path_after = parsed_page.path.strip("/")
+    subfolder_name = path_after.replace("/", "-")  # e.g. miu-miu-ready-to-wear-fall-winter-2024-paris
+
+    # Put it inside the base "images" folder
+    folder_name = os.path.join("images", subfolder_name)
     os.makedirs(folder_name, exist_ok=True)
 
     # Fetch HTML
@@ -23,7 +23,7 @@ def scrape_images_from_page(page_url):
         print(f"Failed to fetch page: {response.status_code}")
         return
 
-    soup = BeautifulSoup(response.text, 'html.parser')
+    soup = BeautifulSoup(response.text, "html.parser")
 
     # Locate the specific block by class
     container = soup.find(
@@ -36,12 +36,12 @@ def scrape_images_from_page(page_url):
         return
 
     # Get only the images inside the container
-    img_tags = container.find_all('img')
+    img_tags = container.find_all("img")
 
     print(f"Found {len(img_tags)} image tags in target block. Processing...")
 
     for img in img_tags:
-        src = img.get('src')
+        src = img.get("src")
         if not src:
             continue
 
@@ -60,7 +60,7 @@ def scrape_images_from_page(page_url):
 
             filepath = os.path.join(folder_name, filename)
 
-            with open(filepath, 'wb') as f:
+            with open(filepath, "wb") as f:
                 f.write(img_resp.content)
                 print(f"Saved: {filepath}")
 
@@ -68,5 +68,5 @@ def scrape_images_from_page(page_url):
             print(f"Error downloading {img_url}: {e}")
 
 if __name__ == "__main__":
-    page_url = "https://nowfashion.com/louis-vuitton-ready-to-wear-spring-summer-2025-paris/"
+    page_url = "https://nowfashion.com/chanel-ready-to-wear-spring-summer-2024-paris/"
     scrape_images_from_page(page_url)

@@ -10,7 +10,7 @@ export function Navigation({ currentPage, onPageChange }: NavigationProps) {
   const pages = [
     { id: 'overview', name: 'Overview', icon: BarChart3 },
     { id: 'data', name: 'Data', icon: Database },
-    { id: 'forecasting', name: 'Forecasting', icon: TrendingUp },
+    { id: 'fashion-statistics', name: 'Fashion Statistics', icon: TrendingUp },
   ];
 
   return (

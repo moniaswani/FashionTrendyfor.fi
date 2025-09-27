@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Navigation } from './components/Navigation';
 import { Overview } from './pages/Overview';
 import { Data } from './pages/Data';
-import { Forecasting } from './pages/Forecasting';
+import { FashionStatistics } from './pages/FashionStatistics';
 
 function App() {
   const [currentPage, setCurrentPage] = useState('overview');
@@ -13,8 +13,8 @@ function App() {
         return <Overview />;
       case 'data':
         return <Data />;
-      case 'forecasting':
-        return <Forecasting />;
+      case 'fashion-statistics':
+        return <FashionStatistics />;
       default:
         return <Overview />;
     }

@@ -303,16 +303,22 @@ interface FashionCardProps {
 
 const folderMap: Record<string, Record<string, string>> = {
   'louis vuitton': {
+    'fall-winter-2024': 'louis-vuitton-ready-to-wear-fall-winter-2024-paris',
     'fall-winter-2025': 'louis-vuitton-ready-to-wear-fall-winter-2025-paris',
-    'spring-summer-2025': 'louis-vuitton-ready-to-wear-spring-winter-2025-paris', // maps to actual folder
+    'spring-summer-2025': 'louis-vuitton-ready-to-wear-spring-winter-2025-paris', 
+    'spring-summer-2024': 'louis-vuitton-ready-to-wear-spring-summer-2024-paris',// maps to actual folder
   },
   'chanel': {
+    'fall-winter-2024': 'chanel-ready-to-wear-fall-winter-2024-paris',
     'fall-winter-2025': 'chanel-ready-to-wear-fall-winter-2025-paris',
     'spring-summer-2025': 'chanel-ready-to-wear-spring-winter-2025-paris',
+    'spring-summer-2024': 'chanel-ready-to-wear-spring-summer-2024-paris',
   },
   'miu miu': {
+    'fall-winter-2024': 'miu-miu-ready-to-wear-fall-winter-2024-paris',
     'fall-winter-2025': 'miu-miu-ready-to-wear-fall-winter-2025-paris',
     'spring-summer-2025': 'miu-miu-ready-to-wear-spring-winter-2025-paris',
+    'spring-summer-2024': 'miu-miu-ready-to-wear-spring-summer-2024-paris',
   },
 };
 
