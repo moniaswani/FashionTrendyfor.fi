@@ -126,7 +126,7 @@ export function FashionDashboard({ dataset }: FashionDashboardProps) {
   const calculateColorDistribution = (): DistributionData => {
     const colorCounts: DistributionData = {};
     rawData.forEach(item => {
-      const colorKey = item.color_name.charAt(0).toUpperCase() + item.color_name.slice(1);
+      const colorKey = item.color_name ? item.color_name.charAt(0).toUpperCase() + item.color_name.slice(1) : item.color_name || 'Unknown';
       colorCounts[colorKey] = (colorCounts[colorKey] || 0) + 1;
     });
     return colorCounts;
@@ -135,7 +135,7 @@ export function FashionDashboard({ dataset }: FashionDashboardProps) {
   const calculateItemDistribution = (): DistributionData => {
     const itemCounts: DistributionData = {};
     rawData.forEach(item => {
-      const itemName = item.item_name.charAt(0).toUpperCase() + item.item_name.slice(1);
+      const itemName = item.item_name ? item.item_name.charAt(0).toUpperCase() + item.item_name.slice(1) : item.item_name || 'Unknown';
       itemCounts[itemName] = (itemCounts[itemName] || 0) + 1;
     });
     return itemCounts;
@@ -144,7 +144,7 @@ export function FashionDashboard({ dataset }: FashionDashboardProps) {
   const calculateMaterialDistribution = (): DistributionData => {
     const materialCounts: DistributionData = {};
     rawData.forEach(item => {
-      const material = item.materials.charAt(0).toUpperCase() + item.materials.slice(1);
+      const material = item.materials ? item.materials.charAt(0).toUpperCase() + item.materials.slice(1) : item.materials || 'Unknown';
       materialCounts[material] = (materialCounts[material] || 0) + 1;
     });
     return materialCounts;
@@ -159,7 +159,7 @@ export function FashionDashboard({ dataset }: FashionDashboardProps) {
       // For colors, we need to find the hex value from rawData
       return entries.map(([name, value]) => {
         const colorItem = rawData.find(item => 
-          item.color_name.charAt(0).toUpperCase() + item.color_name.slice(1) === name
+          (item.color_name ? item.color_name.charAt(0).toUpperCase() + item.color_name.slice(1) : 'Unknown') === name
         );
         return {
           name,
@@ -178,14 +178,14 @@ export function FashionDashboard({ dataset }: FashionDashboardProps) {
   const getUniqueItems = (items: FashionItem[], key: keyof FashionItem) => {
     const uniqueValues = [...new Set(items.map(item => item[key]))];
     return uniqueValues.map(value => 
-      value.charAt(0).toUpperCase() + value.slice(1)
+      value ? value.charAt(0).toUpperCase() + value.slice(1) : value
     );
   };
 
   const getUniqueColors = (items: FashionItem[]) => {
     const uniqueColors = new Map<string, string>();
     items.forEach(item => {
-      const colorName = item.color_name.charAt(0).toUpperCase() + item.color_name.slice(1);
+      const colorName = item.color_name ? item.color_name.charAt(0).toUpperCase() + item.color_name.slice(1) : item.color_name;
       if (!uniqueColors.has(colorName)) {
         uniqueColors.set(colorName, item.color_hex);
       }
@@ -305,20 +305,17 @@ const folderMap: Record<string, Record<string, string>> = {
   'louis vuitton': {
     'fall-winter-2024': 'louis-vuitton-ready-to-wear-fall-winter-2024-paris',
     'fall-winter-2025': 'louis-vuitton-ready-to-wear-fall-winter-2025-paris',
-    'spring-summer-2025': 'louis-vuitton-ready-to-wear-spring-winter-2025-paris', 
-    'spring-summer-2024': 'louis-vuitton-ready-to-wear-spring-summer-2024-paris',// maps to actual folder
+    'spring-summer-2025': 'louis-vuitton-ready-to-wear-spring-winter-2025-paris', // maps to actual folder
   },
   'chanel': {
     'fall-winter-2024': 'chanel-ready-to-wear-fall-winter-2024-paris',
     'fall-winter-2025': 'chanel-ready-to-wear-fall-winter-2025-paris',
     'spring-summer-2025': 'chanel-ready-to-wear-spring-winter-2025-paris',
-    'spring-summer-2024': 'chanel-ready-to-wear-spring-summer-2024-paris',
   },
   'miu miu': {
     'fall-winter-2024': 'miu-miu-ready-to-wear-fall-winter-2024-paris',
     'fall-winter-2025': 'miu-miu-ready-to-wear-fall-winter-2025-paris',
     'spring-summer-2025': 'miu-miu-ready-to-wear-spring-winter-2025-paris',
-    'spring-summer-2024': 'miu-miu-ready-to-wear-spring-summer-2024-paris',
   },
 };
 
@@ -417,3 +414,4 @@ function FashionCard({ imageName, items, getUniqueItems, getUniqueColors, s3Buck
     </div>
   );
 }
+

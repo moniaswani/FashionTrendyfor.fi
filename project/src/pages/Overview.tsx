@@ -42,7 +42,7 @@ export function Overview() {
   const calculateColorDistribution = () => {
     const colorCounts: { [key: string]: number } = {};
     allData.forEach(item => {
-      const colorName = item.color_name.charAt(0).toUpperCase() + item.color_name.slice(1);
+      const colorName = item.color_name ? item.color_name.charAt(0).toUpperCase() + item.color_name.slice(1) : 'Unknown';
       colorCounts[colorName] = (colorCounts[colorName] || 0) + 1;
     });
     return Object.entries(colorCounts)
@@ -53,7 +53,7 @@ export function Overview() {
   const calculateItemDistribution = () => {
     const itemCounts: { [key: string]: number } = {};
     allData.forEach(item => {
-      const itemName = item.item_name.charAt(0).toUpperCase() + item.item_name.slice(1);
+      const itemName = item.item_name ? item.item_name.charAt(0).toUpperCase() + item.item_name.slice(1) : 'Unknown';
       itemCounts[itemName] = (itemCounts[itemName] || 0) + 1;
     });
     return Object.entries(itemCounts)
@@ -64,7 +64,7 @@ export function Overview() {
   const calculateMaterialDistribution = () => {
     const materialCounts: { [key: string]: number } = {};
     allData.forEach(item => {
-      const material = item.materials.charAt(0).toUpperCase() + item.materials.slice(1);
+      const material = item.materials ? item.materials.charAt(0).toUpperCase() + item.materials.slice(1) : 'Unknown';
       materialCounts[material] = (materialCounts[material] || 0) + 1;
     });
     return Object.entries(materialCounts)

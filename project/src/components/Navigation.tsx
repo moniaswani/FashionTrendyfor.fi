@@ -1,5 +1,5 @@
 import React from 'react';
-import { BarChart3, Database, TrendingUp } from 'lucide-react';
+import { BarChart3, Database, TrendingUp, Zap } from 'lucide-react';
 
 interface NavigationProps {
   currentPage: string;
@@ -11,6 +11,7 @@ export function Navigation({ currentPage, onPageChange }: NavigationProps) {
     { id: 'overview', name: 'Overview', icon: BarChart3 },
     { id: 'data', name: 'Data', icon: Database },
     { id: 'fashion-statistics', name: 'Fashion Statistics', icon: TrendingUp },
+    { id: 'forecasting', name: 'Forecasting', icon: Zap },
   ];
 
   return (

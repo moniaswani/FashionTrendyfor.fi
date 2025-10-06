@@ -45,7 +45,13 @@ export function FashionStatistics() {
     [...data]
       .sort((a, b) => b.frequency - a.frequency)
       .slice(0, n)
-      .map((d, idx) => ({ rank: idx + 1, ...d }));
+      .map((d, idx) => ({ 
+        rank: idx + 1, 
+        ...d,
+        color_name: d.color_name ? d.color_name.charAt(0).toUpperCase() + d.color_name.slice(1) : d.color_name,
+        item_name: d.item_name ? d.item_name.charAt(0).toUpperCase() + d.item_name.slice(1) : d.item_name,
+        materials: d.materials ? d.materials.charAt(0).toUpperCase() + d.materials.slice(1) : d.materials
+      }));
 
   // ---- Global Filters ----
   const applyFilters = (data: any[]) =>

@@ -3,6 +3,7 @@ import { Navigation } from './components/Navigation';
 import { Overview } from './pages/Overview';
 import { Data } from './pages/Data';
 import { FashionStatistics } from './pages/FashionStatistics';
+import { Forecasting } from './pages/Forecasting';
 
 function App() {
   const [currentPage, setCurrentPage] = useState('overview');
@@ -15,6 +16,8 @@ function App() {
         return <Data />;
       case 'fashion-statistics':
         return <FashionStatistics />;
+      case 'forecasting':
+        return <Forecasting />;
       default:
         return <Overview />;
     }
