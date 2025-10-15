@@ -36,9 +36,10 @@ interface Dataset {
 
 interface FashionDashboardProps {
   dataset: Dataset;
+  filteredData?: FashionItem[];
 }
 
-export function FashionDashboard({ dataset }: FashionDashboardProps) {
+export function FashionDashboard({ dataset, filteredData }: FashionDashboardProps) {
   const [data, setData] = useState<GroupedData>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -59,21 +60,30 @@ export function FashionDashboard({ dataset }: FashionDashboardProps) {
         
         const result = await response.json();
         
-        // Filter data by designer and season to only show items from the selected dataset
-        const filteredData = result.filter((item: FashionItem) => {
+        // Helper function to normalize season names for comparison
+        const normalizeSeason = (season: string) => {
+          if (!season) return '';
+          return season.toLowerCase()
+            .replace(/[-_]/g, ' ')  // Replace hyphens and underscores with spaces
+            .replace(/\s+/g, ' ')   // Replace multiple spaces with single space
+            .trim();
+        };
+        
+        // Use provided filtered data or filter by dataset
+        const dataToUse = filteredData || result.filter((item: FashionItem) => {
           const itemDesigner = (item.designer || item.brand || '').trim();
-          const itemSeason = (item.season || '').trim();
+          const itemSeason = normalizeSeason(item.season || '');
           const datasetDesigner = dataset.designer.trim();
-          const datasetSeason = dataset.season.trim();
+          const datasetSeason = normalizeSeason(dataset.season);
           
           // Exact match for both designer and season
           return itemDesigner === datasetDesigner && itemSeason === datasetSeason;
         });
         
-        setRawData(filteredData);
+        setRawData(dataToUse);
         
         // Group data by original_image_name
-        const grouped = filteredData.reduce((acc: GroupedData, item: FashionItem) => {
+        const grouped = dataToUse.reduce((acc: GroupedData, item: FashionItem) => {
           const imageName = item.original_image_name;
           if (!acc[imageName]) {
             acc[imageName] = [];
@@ -91,7 +101,7 @@ export function FashionDashboard({ dataset }: FashionDashboardProps) {
     };
 
     fetchData();
-  }, [dataset]);
+  }, [dataset, filteredData]);
 
   // Helper function to determine correct S3 folder path for individual items
   const getS3FolderPathForItem = (item: FashionItem): string => {
@@ -305,17 +315,20 @@ const folderMap: Record<string, Record<string, string>> = {
   'louis vuitton': {
     'fall-winter-2024': 'louis-vuitton-ready-to-wear-fall-winter-2024-paris',
     'fall-winter-2025': 'louis-vuitton-ready-to-wear-fall-winter-2025-paris',
-    'spring-summer-2025': 'louis-vuitton-ready-to-wear-spring-winter-2025-paris', // maps to actual folder
+    'spring-summer-2025': 'louis-vuitton-ready-to-wear-spring-winter-2025-paris',
+    'spring-summer-2024': 'louis-vuitton-ready-to-wear-spring-summer-2024-paris',// maps to actual folder
   },
   'chanel': {
     'fall-winter-2024': 'chanel-ready-to-wear-fall-winter-2024-paris',
     'fall-winter-2025': 'chanel-ready-to-wear-fall-winter-2025-paris',
     'spring-summer-2025': 'chanel-ready-to-wear-spring-winter-2025-paris',
+    'spring-summer-2024': 'chanel-ready-to-wear-spring-summer-2024-paris',
   },
   'miu miu': {
     'fall-winter-2024': 'miu-miu-ready-to-wear-fall-winter-2024-paris',
     'fall-winter-2025': 'miu-miu-ready-to-wear-fall-winter-2025-paris',
     'spring-summer-2025': 'miu-miu-ready-to-wear-spring-winter-2025-paris',
+    'spring-summer-2024': 'miu-miu-ready-to-wear-spring-summer-2024-paris',
   },
 };
 
@@ -364,6 +377,18 @@ function FashionCard({ imageName, items, getUniqueItems, getUniqueColors, s3Buck
       </div>
       
       <div className="p-4">
+        {/* Brand and Season */}
+        <div className="mb-4 pb-3 border-b border-gray-200">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              <span className="text-sm font-semibold text-gray-900">{item.brand}</span>
+            </div>
+            <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+              {item.season}
+            </div>
+          </div>
+        </div>
+
         {/* Clothing Items */}
         <div className="mb-4">
           <h5 className="font-medium text-gray-700 mb-2">Clothing items</h5>
