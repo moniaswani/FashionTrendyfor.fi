@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Shirt, Loader2, AlertCircle, Palette, Package } from 'lucide-react';
-import { PieChart } from './PieChart';
 
 interface FashionItem {
   item_name: string;
@@ -231,52 +230,42 @@ export function FashionDashboard({ dataset, filteredData }: FashionDashboardProp
       {/* Distribution Section */}
       <div>
         <h3 className="text-2xl font-semibold text-gray-800 mb-6 text-center">Fashion analysis overview</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          <div className="bg-green-50 border border-green-200 rounded-lg shadow-md p-6">
-            <div className="flex items-center justify-center mb-4">
-              <Palette className="w-5 h-5 text-green-600 mr-2" />
-              <h4 className="text-lg font-semibold text-gray-800">Color distribution</h4>
-            </div>
-            <div className="flex justify-center">
-              <PieChart 
-                data={formatDistributionData(calculateColorDistribution(), 'color')} 
-                type="color"
-                size={240}
-                showAll={showAllColors}
-                onToggleShowAll={() => setShowAllColors(!showAllColors)}
-              />
+        
+        {/* Summary Statistics */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <div className="bg-white rounded-lg shadow-md p-6">
+            <div className="flex items-center">
+              <Palette className="w-8 h-8 text-green-600 mr-3" />
+              <div>
+                <p className="text-sm text-gray-600">Total Colors</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {Object.keys(calculateColorDistribution()).length}
+                </p>
+              </div>
             </div>
           </div>
           
-          <div className="bg-green-50 border border-green-200 rounded-lg shadow-md p-6">
-            <div className="flex items-center justify-center mb-4">
-              <Shirt className="w-5 h-5 text-green-600 mr-2" />
-              <h4 className="text-lg font-semibold text-gray-800">Clothing items</h4>
-            </div>
-            <div className="flex justify-center">
-              <PieChart 
-                data={formatDistributionData(calculateItemDistribution(), 'item')} 
-                type="item"
-                size={240}
-                showAll={showAllItems}
-                onToggleShowAll={() => setShowAllItems(!showAllItems)}
-              />
+          <div className="bg-white rounded-lg shadow-md p-6">
+            <div className="flex items-center">
+              <Shirt className="w-8 h-8 text-green-600 mr-3" />
+              <div>
+                <p className="text-sm text-gray-600">Clothing Items</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {Object.keys(calculateItemDistribution()).length}
+                </p>
+              </div>
             </div>
           </div>
           
-          <div className="bg-green-50 border border-green-200 rounded-lg shadow-md p-6">
-            <div className="flex items-center justify-center mb-4">
-              <Package className="w-5 h-5 text-green-600 mr-2" />
-              <h4 className="text-lg font-semibold text-gray-800">Materials</h4>
-            </div>
-            <div className="flex justify-center">
-              <PieChart 
-                data={formatDistributionData(calculateMaterialDistribution(), 'material')} 
-                type="material"
-                size={240}
-                showAll={showAllMaterials}
-                onToggleShowAll={() => setShowAllMaterials(!showAllMaterials)}
-              />
+          <div className="bg-white rounded-lg shadow-md p-6">
+            <div className="flex items-center">
+              <Package className="w-8 h-8 text-green-600 mr-3" />
+              <div>
+                <p className="text-sm text-gray-600">Materials</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {Object.keys(calculateMaterialDistribution()).length}
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -315,20 +304,23 @@ const folderMap: Record<string, Record<string, string>> = {
   'louis vuitton': {
     'fall-winter-2024': 'louis-vuitton-ready-to-wear-fall-winter-2024-paris',
     'fall-winter-2025': 'louis-vuitton-ready-to-wear-fall-winter-2025-paris',
-    'spring-summer-2025': 'louis-vuitton-ready-to-wear-spring-winter-2025-paris',
-    'spring-summer-2024': 'louis-vuitton-ready-to-wear-spring-summer-2024-paris',// maps to actual folder
+    'spring-summer-2025': 'louis-vuitton-ready-to-wear-spring-winter-2025-paris', // maps to actual folder
+    'spring-summer-2024': 'louis-vuitton-ready-to-wear-spring-summer-2024-paris', // maps to actual folder
+
   },
   'chanel': {
     'fall-winter-2024': 'chanel-ready-to-wear-fall-winter-2024-paris',
     'fall-winter-2025': 'chanel-ready-to-wear-fall-winter-2025-paris',
     'spring-summer-2025': 'chanel-ready-to-wear-spring-winter-2025-paris',
     'spring-summer-2024': 'chanel-ready-to-wear-spring-summer-2024-paris',
+
   },
   'miu miu': {
     'fall-winter-2024': 'miu-miu-ready-to-wear-fall-winter-2024-paris',
     'fall-winter-2025': 'miu-miu-ready-to-wear-fall-winter-2025-paris',
     'spring-summer-2025': 'miu-miu-ready-to-wear-spring-winter-2025-paris',
-    'spring-summer-2024': 'miu-miu-ready-to-wear-spring-summer-2024-paris',
+    'spring-summer-2024': 'miu-miu-ready-to-wear-spring-summer-2024-paris'
+
   },
 };
 

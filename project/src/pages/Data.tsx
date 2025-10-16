@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronDown } from 'lucide-react';
-import { DatasetSelector } from '../components/DatasetSelector';
 import { FashionDashboard } from '../components/FashionDashboard';
 
 // Auto-detect datasets from API data
