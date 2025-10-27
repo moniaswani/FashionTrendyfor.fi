@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Shirt, Loader2, AlertCircle, Palette, Package } from 'lucide-react';
+import React, { useState, useEffect } from "react";
+import { Shirt, Loader2, AlertCircle, Palette, Package } from "lucide-react";
 
 interface FashionItem {
   item_name: string;
@@ -18,10 +18,6 @@ interface GroupedData {
   [key: string]: FashionItem[];
 }
 
-interface DistributionData {
-  [key: string]: number;
-}
-
 interface Dataset {
   id: string;
   name: string;
@@ -38,171 +34,106 @@ interface FashionDashboardProps {
   filteredData?: FashionItem[];
 }
 
-export function FashionDashboard({ dataset, filteredData }: FashionDashboardProps) {
+export function FashionDashboard({
+  dataset,
+  filteredData,
+}: FashionDashboardProps) {
   const [data, setData] = useState<GroupedData>({});
+  const [rawData, setRawData] = useState<FashionItem[]>([]);
+  const [folderMap, setFolderMap] = useState<any>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [rawData, setRawData] = useState<FashionItem[]>([]);
-  const [showAllColors, setShowAllColors] = useState(false);
-  const [showAllItems, setShowAllItems] = useState(false);
-  const [showAllMaterials, setShowAllMaterials] = useState(false);
 
+  // ✅ Fetch folder map + dataset items
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const response = await fetch(dataset.apiEndpoint);
-        
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const result = await response.json();
-        
-        // Helper function to normalize season names for comparison
-        const normalizeSeason = (season: string) => {
-          if (!season) return '';
-          return season.toLowerCase()
-            .replace(/[-_]/g, ' ')  // Replace hyphens and underscores with spaces
-            .replace(/\s+/g, ' ')   // Replace multiple spaces with single space
-            .trim();
-        };
-        
-        // Use provided filtered data or filter by dataset
-        const dataToUse = filteredData || result.filter((item: FashionItem) => {
-          const itemDesigner = (item.designer || item.brand || '').trim();
-          const itemSeason = normalizeSeason(item.season || '');
-          const datasetDesigner = dataset.designer.trim();
-          const datasetSeason = normalizeSeason(dataset.season);
-          
-          // Exact match for both designer and season
-          return itemDesigner === datasetDesigner && itemSeason === datasetSeason;
-        });
-        
+
+        // 1️⃣ Fetch the folder mapping (brand → season → folder)
+        const folderRes = await fetch(
+          "https://ucyq5e10ok.execute-api.eu-west-2.amazonaws.com/default/listS3Folders"
+        );
+        const folderJson = await folderRes.json();
+
+        // ✅ Fix: Lambda returns { body: "stringified JSON" }, so parse if needed
+        const parsedFolderMap =
+          typeof folderJson.body === "string"
+            ? JSON.parse(folderJson.body)
+            : folderJson;
+
+        setFolderMap(parsedFolderMap);
+
+        // 2️⃣ Fetch dataset fashion items
+        const res = await fetch(dataset.apiEndpoint);
+        if (!res.ok) throw new Error(`HTTP error: ${res.status}`);
+        const result = await res.json();
+
+        const normalize = (s: string) =>
+          s?.toLowerCase().replace(/[-_]/g, " ").trim();
+
+        const dataToUse =
+          filteredData ||
+          result.filter((item: FashionItem) => {
+            const itemBrand = normalize(item.brand);
+            const datasetBrand = normalize(dataset.designer);
+            const itemSeason = normalize(item.season);
+            const datasetSeason = normalize(dataset.season);
+            return itemBrand === datasetBrand && itemSeason === datasetSeason;
+          });
+
         setRawData(dataToUse);
-        
-        // Group data by original_image_name
-        const grouped = dataToUse.reduce((acc: GroupedData, item: FashionItem) => {
-          const imageName = item.original_image_name;
-          if (!acc[imageName]) {
-            acc[imageName] = [];
-          }
-          acc[imageName].push(item);
+
+        const grouped = dataToUse.reduce((acc: GroupedData, item) => {
+          const name = item.original_image_name;
+          acc[name] = acc[name] || [];
+          acc[name].push(item);
           return acc;
         }, {});
-        
         setData(grouped);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch data');
+        setError(err instanceof Error ? err.message : "Error fetching data");
       } finally {
         setLoading(false);
       }
     };
-
     fetchData();
   }, [dataset, filteredData]);
 
-  // Helper function to determine correct S3 folder path for individual items
-  const getS3FolderPathForItem = (item: FashionItem): string => {
-    const brand = item.brand.toLowerCase();
-    const imageName = item.original_image_name.toLowerCase();
-    
-    if (brand === 'louis vuitton') {
-      if (imageName.includes('fall-winter')) {
-        return 'louis-vuitton-ready-to-wear-fall-winter-2025-paris';
-      } else {
-        return 'louis-vuitton-ready-to-wear-spring-summer-2025-paris';
-      }
-    } else if (brand === 'miu miu') {
-      if (imageName.includes('fall-winter')) {
-        return 'miu-miu-ready-to-wear-fall-winter-2025-paris';
-      } else {
-        return 'miu-miu-ready-to-wear-spring-summer-2025-paris';
-      }
-    } else if (brand === 'chanel') {
-      if (imageName.includes('fall-winter')) {
-        return 'chanel-ready-to-wear-fall-winter-2025-paris';
-      } else {
-        return 'chanel-ready-to-wear-spring-summer-2025-paris';
-      }
-    }
-    
-    // Default fallback
-    return 'fashion-intelligence-input';
-  };
+  // ✅ Match correct S3 folder using API map
+  function getFolder(brand: string, season: string) {
+    const normalize = (s: string) => s?.toLowerCase().replace(/[-_]/g, " ").trim();
+    const brandKey = normalize(brand);
+    const seasonKey = normalize(season);
 
-  // Calculate real distributions from API data
-  const calculateColorDistribution = (): DistributionData => {
-    const colorCounts: DistributionData = {};
-    rawData.forEach(item => {
-      const colorKey = item.color_name ? item.color_name.charAt(0).toUpperCase() + item.color_name.slice(1) : item.color_name || 'Unknown';
-      colorCounts[colorKey] = (colorCounts[colorKey] || 0) + 1;
-    });
-    return colorCounts;
-  };
+    const mappedFolder =
+      folderMap[brandKey]?.[seasonKey] ||
+      `${brandKey.replace(/\s+/g, "-")}-ready-to-wear-${seasonKey.replace(
+        /\s+/g,
+        "-"
+      )}-paris`;
 
-  const calculateItemDistribution = (): DistributionData => {
-    const itemCounts: DistributionData = {};
-    rawData.forEach(item => {
-      const itemName = item.item_name ? item.item_name.charAt(0).toUpperCase() + item.item_name.slice(1) : item.item_name || 'Unknown';
-      itemCounts[itemName] = (itemCounts[itemName] || 0) + 1;
-    });
-    return itemCounts;
-  };
+    return mappedFolder;
+  }
 
-  const calculateMaterialDistribution = (): DistributionData => {
-    const materialCounts: DistributionData = {};
-    rawData.forEach(item => {
-      const material = item.materials ? item.materials.charAt(0).toUpperCase() + item.materials.slice(1) : item.materials || 'Unknown';
-      materialCounts[material] = (materialCounts[material] || 0) + 1;
-    });
-    return materialCounts;
-  };
-
-  const formatDistributionData = (distribution: DistributionData, type: 'color' | 'item' | 'material') => {
-    const entries = Object.entries(distribution)
-      .sort(([,a], [,b]) => b - a)
-      .slice(0, 10);
-    
-    if (type === 'color') {
-      // For colors, we need to find the hex value from rawData
-      return entries.map(([name, value]) => {
-        const colorItem = rawData.find(item => 
-          (item.color_name ? item.color_name.charAt(0).toUpperCase() + item.color_name.slice(1) : 'Unknown') === name
-        );
-        return {
-          name,
-          value,
-          color: colorItem?.color_hex || '#808080'
-        };
-      });
-    }
-    
-    return entries.map(([name, value]) => ({
-        name,
-        value
-      }));
-  };
-
-  const getUniqueItems = (items: FashionItem[], key: keyof FashionItem) => {
-    const uniqueValues = [...new Set(items.map(item => item[key]))];
-    return uniqueValues.map(value => 
-      value ? value.charAt(0).toUpperCase() + value.slice(1) : value
-    );
-  };
+  const getUniqueItems = (items: FashionItem[], key: keyof FashionItem) =>
+    [...new Set(items.map((i) => i[key]))]
+      .filter(Boolean)
+      .map((v) => (v as string).charAt(0).toUpperCase() + (v as string).slice(1));
 
   const getUniqueColors = (items: FashionItem[]) => {
-    const uniqueColors = new Map<string, string>();
-    items.forEach(item => {
-      const colorName = item.color_name ? item.color_name.charAt(0).toUpperCase() + item.color_name.slice(1) : item.color_name;
-      if (!uniqueColors.has(colorName)) {
-        uniqueColors.set(colorName, item.color_hex);
-      }
+    const unique = new Map<string, string>();
+    items.forEach((i) => {
+      if (i.color_name && !unique.has(i.color_name))
+        unique.set(i.color_name, i.color_hex);
     });
-    return Array.from(uniqueColors.entries()).map(([name, hex]) => ({ name, hex }));
+    return Array.from(unique.entries()).map(([name, hex]) => ({
+      name: name.charAt(0).toUpperCase() + name.slice(1),
+      hex,
+    }));
   };
 
-  if (loading) {
+  if (loading)
     return (
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
@@ -211,78 +142,51 @@ export function FashionDashboard({ dataset, filteredData }: FashionDashboardProp
         </div>
       </div>
     );
-  }
 
-  if (error) {
+  if (error)
     return (
-      <div className="flex items-center justify-center h-96">
-        <div className="text-center">
-          <AlertCircle className="w-8 h-8 mx-auto mb-4 text-red-500" />
-          <p className="text-red-600 mb-2">Error loading data:</p>
-          <p className="text-gray-600">{error}</p>
-        </div>
+      <div className="flex items-center justify-center h-96 text-center">
+        <AlertCircle className="w-8 h-8 mx-auto mb-2 text-red-500" />
+        <p className="text-red-600">{error}</p>
       </div>
     );
-  }
 
   return (
     <div className="space-y-8">
-      {/* Distribution Section */}
-      <div>
-        <h3 className="text-2xl font-semibold text-gray-800 mb-6 text-center">Fashion analysis overview</h3>
-        
-        {/* Summary Statistics */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <div className="flex items-center">
-              <Palette className="w-8 h-8 text-green-600 mr-3" />
-              <div>
-                <p className="text-sm text-gray-600">Total Colors</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {Object.keys(calculateColorDistribution()).length}
-                </p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <div className="flex items-center">
-              <Shirt className="w-8 h-8 text-green-600 mr-3" />
-              <div>
-                <p className="text-sm text-gray-600">Clothing Items</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {Object.keys(calculateItemDistribution()).length}
-                </p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <div className="flex items-center">
-              <Package className="w-8 h-8 text-green-600 mr-3" />
-              <div>
-                <p className="text-sm text-gray-600">Materials</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {Object.keys(calculateMaterialDistribution()).length}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
+      <h3 className="text-2xl font-semibold text-gray-800 text-center mb-8">
+        Fashion Analysis Overview
+      </h3>
+
+      {/* Summary */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <SummaryCard
+          icon={<Palette className="w-8 h-8 text-green-600" />}
+          label="Total Colors"
+          value={new Set(rawData.map((i) => i.color_name)).size}
+        />
+        <SummaryCard
+          icon={<Shirt className="w-8 h-8 text-green-600" />}
+          label="Clothing Items"
+          value={new Set(rawData.map((i) => i.item_name)).size}
+        />
+        <SummaryCard
+          icon={<Package className="w-8 h-8 text-green-600" />}
+          label="Materials"
+          value={new Set(rawData.map((i) => i.materials)).size}
+        />
       </div>
 
-      <h3 className="text-2xl font-semibold text-gray-800">Individual fashion analysis</h3>
+      {/* Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {Object.entries(data).map(([imageName, items]) => (
           <FashionCard
             key={items[0].record_id}
-            imageName={items[0].original_image_name} // 👈 file from API
-            collection={items[0].collection}         // 👈 folder from API
+            imageName={imageName}
             items={items}
+            s3Bucket="runwayimages"
+            getFolder={getFolder}
             getUniqueItems={getUniqueItems}
             getUniqueColors={getUniqueColors}
-            getS3FolderPathForItem={getS3FolderPathForItem}
-            s3Bucket="runwayimages"
           />
         ))}
       </div>
@@ -290,145 +194,137 @@ export function FashionDashboard({ dataset, filteredData }: FashionDashboardProp
   );
 }
 
-interface FashionCardProps {
-  imageName: string;
-  collection: string; // comes directly from API
-  items: FashionItem[];
-  getUniqueItems: (items: FashionItem[], key: keyof FashionItem) => string[];
-  getUniqueColors: (items: FashionItem[]) => { name: string; hex: string }[];
-  getS3FolderPathForItem: (item: FashionItem) => string;
-  s3Bucket: string;
-}
-
-const folderMap: Record<string, Record<string, string>> = {
-  'louis vuitton': {
-    'fall-winter-2024': 'louis-vuitton-ready-to-wear-fall-winter-2024-paris',
-    'fall-winter-2025': 'louis-vuitton-ready-to-wear-fall-winter-2025-paris',
-    'spring-summer-2025': 'louis-vuitton-ready-to-wear-spring-winter-2025-paris', // maps to actual folder
-    'spring-summer-2024': 'louis-vuitton-ready-to-wear-spring-summer-2024-paris', // maps to actual folder
-
-  },
-  'chanel': {
-    'fall-winter-2024': 'chanel-ready-to-wear-fall-winter-2024-paris',
-    'fall-winter-2025': 'chanel-ready-to-wear-fall-winter-2025-paris',
-    'spring-summer-2025': 'chanel-ready-to-wear-spring-winter-2025-paris',
-    'spring-summer-2024': 'chanel-ready-to-wear-spring-summer-2024-paris',
-
-  },
-  'miu miu': {
-    'fall-winter-2024': 'miu-miu-ready-to-wear-fall-winter-2024-paris',
-    'fall-winter-2025': 'miu-miu-ready-to-wear-fall-winter-2025-paris',
-    'spring-summer-2025': 'miu-miu-ready-to-wear-spring-winter-2025-paris',
-    'spring-summer-2024': 'miu-miu-ready-to-wear-spring-summer-2024-paris'
-
-  },
-};
-
-function getFolder(brand: string, season: string) {
-  const brandKey = brand.toLowerCase();
-  const seasonKey = season.toLowerCase().replace(/\s+/g, '-'); // "spring-summer-2025"
-  return folderMap[brandKey]?.[seasonKey] || 'fashion-intelligence-input';
-}
-
-function FashionCard({ imageName, items, getUniqueItems, getUniqueColors, s3Bucket }: FashionCardProps) {
-  const [imageError, setImageError] = useState(false);
-
-  const item = items[0];
-  const folder = getFolder(item.brand, item.season);
-
-  const imageUrl = `https://${s3Bucket}.s3.eu-west-2.amazonaws.com/${folder}/${imageName}`;
-  console.log("Resolved image URL:", imageUrl);
-
-
-  const uniqueClothing = getUniqueItems(items, 'item_name');
-  const uniqueColors = getUniqueColors(items);
-  const uniqueMaterials = getUniqueItems(items, 'materials');
-
+// ✅ SummaryCard
+function SummaryCard({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+}) {
   return (
-    <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300">
-      <div className="aspect-square bg-gray-100 relative overflow-hidden">
-        {!imageError ? (
-          <img
-            src={imageUrl}
-            alt={`Fashion analysis for ${imageName}`}
-            className="w-full h-full object-cover"
-            loading="lazy"
-            onError={() => {
-              console.error("❌ Failed to load:", imageUrl);
-              setImageError(true);
-            }}
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-gray-400">
-            <div className="text-center">
-              <Shirt className="w-12 h-12 mx-auto mb-2" />
-              <p className="text-sm">Image not available</p>
-            </div>
-          </div>
-        )}
-      </div>
-      
-      <div className="p-4">
-        {/* Brand and Season */}
-        <div className="mb-4 pb-3 border-b border-gray-200">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <span className="text-sm font-semibold text-gray-900">{item.brand}</span>
-            </div>
-            <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
-              {item.season}
-            </div>
-          </div>
-        </div>
-
-        {/* Clothing Items */}
-        <div className="mb-4">
-          <h5 className="font-medium text-gray-700 mb-2">Clothing items</h5>
-          <div className="flex flex-wrap gap-1">
-            {uniqueClothing.map((item, index) => (
-              <span
-                key={index}
-                className="bg-gray-100 text-gray-700 px-2 py-1 rounded-full text-xs"
-              >
-                {item}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        {/* Colors */}
-        <div className="mb-4">
-          <h5 className="font-medium text-gray-700 mb-2">Colors</h5>
-          <div className="flex flex-wrap gap-2">
-            {uniqueColors.map((color, index) => (
-              <div key={index} className="flex items-center gap-2">
-                <div
-                  className="w-4 h-4 rounded-full border border-gray-300"
-                  style={{ backgroundColor: color.hex }}
-                  title={`${color.name} (${color.hex})`}
-                />
-                <span className="text-xs text-gray-600">{color.name}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Materials */}
-        <div>
-          <h5 className="font-medium text-gray-700 mb-2">Materials</h5>
-          <div className="flex flex-wrap gap-1">
-            {uniqueMaterials.map((material, index) => (
-              <span
-                key={index}
-                className="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs"
-              >
-                {material}
-              </span>
-            ))}
-          </div>
-        </div>
+    <div className="bg-white rounded-lg shadow-md p-6 flex items-center">
+      <div className="mr-3">{icon}</div>
+      <div>
+        <p className="text-sm text-gray-600">{label}</p>
+        <p className="text-2xl font-bold text-gray-900">{value}</p>
       </div>
     </div>
   );
 }
 
+// ✅ FashionCard
+function FashionCard({
+  imageName,
+  items,
+  s3Bucket,
+  getFolder,
+  getUniqueItems,
+  getUniqueColors,
+}: {
+  imageName: string;
+  items: FashionItem[];
+  s3Bucket: string;
+  getFolder: (brand: string, season: string) => string;
+  getUniqueItems: (items: FashionItem[], key: keyof FashionItem) => string[];
+  getUniqueColors: (items: FashionItem[]) => { name: string; hex: string }[];
+}) {
+  const [imageError, setImageError] = useState(false);
+  const item = items[0];
+  const folder = getFolder(item.brand, item.season);
+
+  const imageUrl = `https://${s3Bucket}.s3.eu-west-2.amazonaws.com/${folder}/${item.original_image_name}`;
+
+  const clothing = getUniqueItems(items, "item_name");
+  const colors = getUniqueColors(items);
+  const materials = getUniqueItems(items, "materials");
+
+  return (
+    <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300">
+      {/* Image */}
+      <div className="aspect-square bg-gray-100 relative">
+        {!imageError ? (
+          <img
+            src={imageUrl}
+            alt={imageName}
+            className="w-full h-full object-cover"
+            loading="lazy"
+            onError={() => setImageError(true)}
+          />
+        ) : (
+          <div className="flex items-center justify-center h-full text-gray-400">
+            <Shirt className="w-10 h-10" />
+          </div>
+        )}
+      </div>
+
+      {/* Info */}
+      <div className="p-4">
+        <div className="flex justify-between items-center mb-3">
+          <h4 className="font-semibold text-gray-900">{item.brand}</h4>
+          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+            {item.season}
+          </span>
+        </div>
+
+        <DetailSection title="Clothing Items" values={clothing} />
+        <ColorSection colors={colors} />
+        <DetailSection title="Materials" values={materials} color="green" />
+      </div>
+    </div>
+  );
+}
+
+// ✅ DetailSection + ColorSection
+function DetailSection({
+  title,
+  values,
+  color,
+}: {
+  title: string;
+  values: string[];
+  color?: "green";
+}) {
+  const baseColor =
+    color === "green"
+      ? "bg-green-100 text-green-700"
+      : "bg-gray-100 text-gray-700";
+  return (
+    <div className="mb-3">
+      <h5 className="font-medium text-gray-700 mb-2">{title}</h5>
+      <div className="flex flex-wrap gap-1">
+        {values.map((v, i) => (
+          <span key={i} className={`${baseColor} px-2 py-1 rounded-full text-xs`}>
+            {v}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ColorSection({
+  colors,
+}: {
+  colors: { name: string; hex: string }[];
+}) {
+  return (
+    <div className="mb-3">
+      <h5 className="font-medium text-gray-700 mb-2">Colors</h5>
+      <div className="flex flex-wrap gap-2">
+        {colors.map((c, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <div
+              className="w-4 h-4 rounded-full border border-gray-300"
+              style={{ backgroundColor: c.hex }}
+              title={`${c.name} (${c.hex})`}
+            />
+            <span className="text-xs text-gray-600">{c.name}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}

@@ -130,24 +130,23 @@ export function Data() {
   // Get unique values for filter dropdowns
   const getUniqueValues = (key: string) => {
     const values = new Set<string>();
-    
-    // Helper function to normalize and format season display names
+  
+    // Instead of using allData, use filteredData to get *remaining possible options*
+    const sourceData = filteredData.length > 0 ? filteredData : allData;
+  
     const formatSeasonForDisplay = (season: string) => {
       if (!season) return '';
-      // Normalize first, then format for display
       const normalized = season.toLowerCase()
         .replace(/[-_]/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
-      
-      // Convert back to proper case with hyphens for consistency
       return normalized
         .split(' ')
         .map(word => word.charAt(0).toUpperCase() + word.slice(1))
         .join('-');
     };
-    
-    allData.forEach(item => {
+  
+    sourceData.forEach(item => {
       let value = '';
       switch (key) {
         case 'brand':
@@ -168,15 +167,16 @@ export function Data() {
       }
       if (value.trim()) {
         if (key === 'season') {
-          values.add(value); // Already formatted by formatSeasonForDisplay
+          values.add(value);
         } else {
           values.add(value.charAt(0).toUpperCase() + value.slice(1));
         }
       }
     });
+  
     return Array.from(values).sort();
   };
-
+  
   const handleFilterChange = (filterType: string, value: string) => {
     setFilters(prev => ({
       ...prev,
