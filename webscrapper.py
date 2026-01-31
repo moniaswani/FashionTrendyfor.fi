@@ -68,5 +68,5 @@ def scrape_images_from_page(page_url):
             print(f"Error downloading {img_url}: {e}")
 
 if __name__ == "__main__":
-    page_url = "https://nowfashion.com/chanel-ready-to-wear-spring-summer-2024-paris/"
+    page_url = "https://nowfashion.com/acne-studios-ready-to-wear-spring-summer-2026-paris/"
     scrape_images_from_page(page_url)
