@@ -1,3 +1,13 @@
+# macOS system files
+.DS_Store
+
+# Node.js dependencies
+node_modules/
+
+# Python model files and archives
+*.pt
+*.zip
+
 # Ignore everything in dataimages
 dataimages/*
 
@@ -19,3 +29,5 @@ __pycache__/
 share/*
 
 images/*
+
+output_segmented/*

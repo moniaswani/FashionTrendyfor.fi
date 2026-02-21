@@ -1,0 +1,153 @@
+TWO-STAGE FASHION IMAGE ANALYSIS
+=================================
+
+PROBLEM SOLVED:
+The two-stage approach forces Claude to be thorough by:
+1. FIRST describing what it sees (commitment to observation)
+2. THEN extracting items based on its own description (prevents skipping)
+
+This eliminates hallucinations and undercounting because:
+- Stage 1 makes Claude "think out loud" about what's visible
+- Stage 2 then ensures everything described is extracted as items
+- If something was mentioned in Stage 1, it must appear in Stage 2 output
+
+---
+
+STAGE 1: OUTFIT DESCRIPTION
+===========================
+
+Input: Image (base64 encoded)
+
+Output: Detailed natural language description covering:
+1. HEAD - cap, hat, headband, etc.
+2. FACE/EARS - earrings, glasses, etc.
+3. NECK/CHEST - necklaces, scarves, etc.
+4. UPPER BODY - jackets, shirts, layering details
+5. WAIST - belts, chains, etc.
+6. HANDS - what's being held/carried
+7. LOWER BODY - pants, skirts, etc.
+8. FEET - shoes, boots, sandals, etc.
+
+Example output:
+"HEAD: Black baseball cap
+FACE/EARS: Gold metallic earrings on both ears
+UPPER BODY: Black wrap-style dress/shirt with deep V-neckline
+WAIST: Gold metallic belt visible at waist
+HANDS: Black leather handbag held in right hand
+LOWER BODY: Black tailored pants
+FEET: Black platform sandals"
+
+---
+
+STAGE 2: ITEM EXTRACTION
+=========================
+
+Input: 
+- Image (base64 encoded) 
+- Stage 1 description (as context)
+
+Output: Complete JSON with:
+- clothing_items list
+- material_decomposition mapping
+- item_colors_hex mapping
+- item_colors_name mapping
+
+The prompt in Stage 2 explicitly says:
+"Every item mentioned in the description MUST be in your output"
+
+This creates accountability - Claude can't skip items because it already committed to seeing them in Stage 1.
+
+---
+
+INTEGRATION INTO YOUR SCRIPT
+=============================
+
+Replace the analyze_image() function in your main script with the two-stage version:
+
+Original (single call):
+analyze_image(image_b64) → JSON
+
+New (two calls):
+1. Stage 1: bedrock_invoke with description prompt
+2. Stage 2: bedrock_invoke with extraction prompt (using Stage 1 output as context)
+3. Return Stage 2 JSON
+
+The rest of your pipeline stays the same - just replace the function.
+
+---
+
+EXPECTED IMPROVEMENTS
+======================
+
+Before (undercounting):
+{
+  "clothing_items": ["hat", "jacket", "pants"],
+  ...
+}
+Missing: earrings, belt, handbag, shoes
+
+After (complete):
+{
+  "clothing_items": ["cap", "earrings", "shirt", "belt", "pants", "bag", "shoes"],
+  ...
+}
+All items detected: 7 items vs 3
+
+---
+
+WHY THIS WORKS
+===============
+
+The two-stage approach leverages Claude's reasoning strengths:
+
+1. DESCRIPTION STAGE: Forces systematic observation
+   - Claude must go through each body part
+   - Commitment to what it sees creates a baseline
+   - Can't skip steps without it being obvious
+
+2. EXTRACTION STAGE: Enforces completeness
+   - Must map description items to clothing_items
+   - Context-aware extraction (knows what to expect)
+   - Self-checks against its own description
+
+3. NATURAL LANGUAGE BRIDGE: Reduces JSON errors
+   - Stage 1 output is human-readable
+   - You can monitor if description is accurate
+   - If description is wrong, you know Stage 2 will be wrong too
+
+---
+
+DEBUGGING TIP
+==============
+
+If Stage 2 still undercounts:
+1. Check Stage 1 description output
+2. See what items were described
+3. If item is in description but not in output, it's a Stage 2 failure
+4. If item is missing from description, it's a Stage 1 failure
+5. Adjust whichever stage is failing
+
+---
+
+COST CONSIDERATION
+===================
+
+Note: Two-stage uses 2x API calls
+- Stage 1: ~800 tokens max
+- Stage 2: ~1500 tokens max
+- Total: ~2300 tokens per image vs ~1200 for single stage
+
+Trade-off: Better accuracy for 2x API cost
+- If accuracy is critical: use two-stage
+- If speed matters more: use optimized single-stage
+
+---
+
+NEXT STEPS
+==========
+
+1. Copy the two-stage function into your main script
+2. Update the analyze_image() call in process_images()
+3. Test with your runway images
+4. Monitor Stage 1 descriptions to ensure they're accurate
+5. Compare Stage 2 output to expected items
