@@ -30,3 +30,6 @@ share/*
 images/*
 
 output_segmented/*
+
+# Lambda build folders
+google_trends_build/
