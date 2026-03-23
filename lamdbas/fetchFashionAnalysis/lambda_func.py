@@ -16,6 +16,16 @@ def parse_multi(params, key):
     return [v.strip().lower() for v in raw.split(",") if v.strip()] if raw else []
 
 
+def season_variants(season: str):
+    """Return both hyphenated and space-separated forms of a season string."""
+    hyphenated = season.replace(" ", "-")
+    spaced = season.replace("-", " ")
+    variants = [hyphenated]
+    if spaced != hyphenated:
+        variants.append(spaced)
+    return variants
+
+
 def build_or_filter(field, values, prefix):
     """
     Build a DynamoDB FilterExpression fragment for OR contains across multiple values.
@@ -82,26 +92,30 @@ def lambda_handler(event, context):
 
         # Route: single designer + single season → GSI (most efficient)
         if len(designers) == 1 and len(seasons) == 1:
-            query_kwargs = {
-                "IndexName": "DesignerSeasonIndex",
-                "KeyConditionExpression": (
-                    Key("designer_lower").eq(designers[0]) &
-                    Key("season_lower").eq(seasons[0])
-                ),
-            }
-            if filter_parts:
-                query_kwargs["FilterExpression"] = " AND ".join(filter_parts)
-                query_kwargs["ExpressionAttributeValues"] = expr_attr_values
-            if exclusive_start_key:
-                query_kwargs["ExclusiveStartKey"] = exclusive_start_key
+            for season_val in season_variants(seasons[0]):
+                query_kwargs = {
+                    "IndexName": "DesignerSeasonIndex",
+                    "KeyConditionExpression": (
+                        Key("designer_lower").eq(designers[0]) &
+                        Key("season_lower").eq(season_val)
+                    ),
+                }
+                if filter_parts:
+                    query_kwargs["FilterExpression"] = " AND ".join(filter_parts)
+                    query_kwargs["ExpressionAttributeValues"] = expr_attr_values
+                if exclusive_start_key:
+                    query_kwargs["ExclusiveStartKey"] = exclusive_start_key
 
-            while len(items) < limit:
-                res = table.query(**query_kwargs)
-                items.extend(res.get("Items", []))
-                last_evaluated_key = res.get("LastEvaluatedKey")
-                if not last_evaluated_key or len(items) >= limit:
-                    break
-                query_kwargs["ExclusiveStartKey"] = last_evaluated_key
+                while len(items) < limit:
+                    res = table.query(**query_kwargs)
+                    items.extend(res.get("Items", []))
+                    last_evaluated_key = res.get("LastEvaluatedKey")
+                    if not last_evaluated_key or len(items) >= limit:
+                        break
+                    query_kwargs["ExclusiveStartKey"] = last_evaluated_key
+
+                if items:
+                    break  # found results with this season format, stop trying
 
         elif len(designers) == 1 and len(seasons) == 0:
             # GSI PK only — all seasons for one designer

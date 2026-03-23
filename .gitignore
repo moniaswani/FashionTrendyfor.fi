@@ -31,3 +31,8 @@ share/*
 images/*
 
 output_segmented/*
+.venv/
+.claude/
+__pycache__/
+*.pyc
+.DS_Store
