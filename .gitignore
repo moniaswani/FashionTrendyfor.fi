@@ -34,3 +34,9 @@ output_segmented/*
 
 # Lambda build folders
 google_trends_build/
+
+.venv/
+.claude/
+__pycache__/
+*.pyc
+.DS_Store
