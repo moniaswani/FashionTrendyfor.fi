@@ -16,6 +16,72 @@ def parse_multi(params, key):
     return [v.strip().lower() for v in raw.split(",") if v.strip()] if raw else []
 
 
+def expand_designer(designer: str) -> list[str]:
+    """
+    Return the designer slug plus a space-expanded variant so that a query for
+    'dolcegabbana' also searches for 'dolce gabbana' (and vice-versa).
+    This bridges the gap when S3 folders were named without spaces but the DB
+    records were ingested under the spaced form, or vice versa.
+    """
+    variants = [designer]
+    # If no spaces, try inserting a space before each uppercase-like transition
+    # For simple cases: just try adding spaces between runs of letters
+    if " " not in designer:
+        # No reliable algorithmic split for arbitrary brand names, so we rely on
+        # the canonical_to_spaced merge in listS3Folders for the UI, and only
+        # apply a known set of single-word → spaced mappings here.
+        KNOWN_SPLITS = {
+            "dolcegabbana": "dolce gabbana",
+            "alexandermcqueen": "alexander mcqueen",
+            "alexanderwang": "alexander wang",
+            "bottegaveneta": "bottega veneta",
+            "calvinklein": "calvin klein",
+            "christiandior": "christian dior",
+            "christianlouboutin": "christian louboutin",
+            "comme desgarcons": "comme des garcons",
+            "commedesgarcons": "comme des garcons",
+            "emiliopucci": "emilio pucci",
+            "gianniversace": "gianni versace",
+            "giuseppezanotti": "giuseppe zanotti",
+            "helmutlang": "helmut lang",
+            "isseymiyake": "issey miyake",
+            "jeanpaulgaultier": "jean paul gaultier",
+            "jimmychoo": "jimmy choo",
+            "johngalliano": "john galliano",
+            "katespade": "kate spade",
+            "louisvuitton": "louis vuitton",
+            "maisonmargiela": "maison margiela",
+            "maisonmartinmargiela": "maison martin margiela",
+            "marcjacobs": "marc jacobs",
+            "marceloverdi": "marcelo burlon",
+            "maximiliandavis": "maximilian davis",
+            "michaelkors": "michael kors",
+            "moschino": "moschino",
+            "nicolasghesquiere": "nicolas ghesquiere",
+            "prabal gurung": "prabal gurung",
+            "ralphlauren": "ralph lauren",
+            "rickowens": "rick owens",
+            "robertocavalli": "roberto cavalli",
+            "salvatorreferragamo": "salvatore ferragamo",
+            "stellamccartney": "stella mccartney",
+            "tomford": "tom ford",
+            "valentinogravani": "valentino",
+            "versace": "versace",
+            "viviennewestwood": "vivienne westwood",
+            "yslsaintlaurent": "saint laurent",
+            "acnestudios": "acne studios",
+        }
+        spaced = KNOWN_SPLITS.get(designer.replace("-", "").replace(" ", ""))
+        if spaced and spaced != designer:
+            variants.append(spaced)
+    else:
+        # Has spaces — also try the no-space form
+        no_space = designer.replace(" ", "")
+        if no_space != designer:
+            variants.append(no_space)
+    return variants
+
+
 def season_variants(season: str):
     """Return both hyphenated and space-separated forms of a season string."""
     hyphenated = season.replace(" ", "-")
@@ -92,13 +158,42 @@ def lambda_handler(event, context):
 
         # Route: single designer + single season → GSI (most efficient)
         if len(designers) == 1 and len(seasons) == 1:
-            for season_val in season_variants(seasons[0]):
+            # Try designer variants (handles "dolcegabbana" ↔ "dolce gabbana" splits)
+            for designer_val in expand_designer(designers[0]):
+                for season_val in season_variants(seasons[0]):
+                    query_kwargs = {
+                        "IndexName": "DesignerSeasonIndex",
+                        "KeyConditionExpression": (
+                            Key("designer_lower").eq(designer_val) &
+                            Key("season_lower").eq(season_val)
+                        ),
+                    }
+                    if filter_parts:
+                        query_kwargs["FilterExpression"] = " AND ".join(filter_parts)
+                        query_kwargs["ExpressionAttributeValues"] = expr_attr_values
+                    if exclusive_start_key:
+                        query_kwargs["ExclusiveStartKey"] = exclusive_start_key
+
+                    while len(items) < limit:
+                        res = table.query(**query_kwargs)
+                        items.extend(res.get("Items", []))
+                        last_evaluated_key = res.get("LastEvaluatedKey")
+                        if not last_evaluated_key or len(items) >= limit:
+                            break
+                        query_kwargs["ExclusiveStartKey"] = last_evaluated_key
+
+                    if items:
+                        break  # found results with this season format, stop trying
+
+                if items:
+                    break  # found results with this designer variant, stop trying
+
+        elif len(designers) == 1 and len(seasons) == 0:
+            # GSI PK only — try all designer variants across all seasons
+            for designer_val in expand_designer(designers[0]):
                 query_kwargs = {
                     "IndexName": "DesignerSeasonIndex",
-                    "KeyConditionExpression": (
-                        Key("designer_lower").eq(designers[0]) &
-                        Key("season_lower").eq(season_val)
-                    ),
+                    "KeyConditionExpression": Key("designer_lower").eq(designer_val),
                 }
                 if filter_parts:
                     query_kwargs["FilterExpression"] = " AND ".join(filter_parts)
@@ -115,27 +210,7 @@ def lambda_handler(event, context):
                     query_kwargs["ExclusiveStartKey"] = last_evaluated_key
 
                 if items:
-                    break  # found results with this season format, stop trying
-
-        elif len(designers) == 1 and len(seasons) == 0:
-            # GSI PK only — all seasons for one designer
-            query_kwargs = {
-                "IndexName": "DesignerSeasonIndex",
-                "KeyConditionExpression": Key("designer_lower").eq(designers[0]),
-            }
-            if filter_parts:
-                query_kwargs["FilterExpression"] = " AND ".join(filter_parts)
-                query_kwargs["ExpressionAttributeValues"] = expr_attr_values
-            if exclusive_start_key:
-                query_kwargs["ExclusiveStartKey"] = exclusive_start_key
-
-            while len(items) < limit:
-                res = table.query(**query_kwargs)
-                items.extend(res.get("Items", []))
-                last_evaluated_key = res.get("LastEvaluatedKey")
-                if not last_evaluated_key or len(items) >= limit:
-                    break
-                query_kwargs["ExclusiveStartKey"] = last_evaluated_key
+                    break  # found results with this designer variant, stop trying
 
         else:
             # Scan path — multiple designers, multiple seasons, or season-only

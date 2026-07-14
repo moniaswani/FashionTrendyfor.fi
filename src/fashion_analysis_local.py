@@ -101,19 +101,12 @@ def preprocess_image(image_path):
 
 def format_for_dynamodb(filename: str) -> str:
     """
-    Convert filename to match DynamoDB format
-    Example: "miu-miu-ready-to-wear-fall-winter-2018-fashion-show-runway-0003.jpg"
-    Becomes: "Miu-Miu-Ready-To-Wear-Fall-Winter-2018-Fashion-Show-Runway-0003.jpg"
+    Return the filename exactly as downloaded from S3/Vogue (preserving original casing).
+    The scraper saves files with their URL basename, which is the exact S3 object key.
+    We must NOT re-capitalize here — brand names like 'Comme-des-Garcons' have
+    non-uniform casing that capitalization would corrupt.
     """
-    # Remove .jpg extension
-    name_without_ext = filename.rsplit('.', 1)[0] if '.' in filename else filename
-    
-    # Split by hyphen and capitalize each word
-    words = name_without_ext.split('-')
-    capitalized = [word.capitalize() for word in words]
-    
-    # Rejoin and add .jpg
-    return '-'.join(capitalized) + '.jpg'
+    return filename
 
 
 def extract_metadata(filename: str):
@@ -485,6 +478,18 @@ def process_images(input_folder: str):
                 items_found = analysis.get("clothing_items", [])
                 print(f"   ✅ Found {len(items_found)} clothing items")
 
+                # Derive GSI index keys from metadata
+                designer_display = metadata.get("designer", "unknown")
+                season_display = metadata.get("season", "unknown")
+                designer_lower = designer_display.lower().strip()
+                # Normalize season to hyphenated lowercase (e.g. "fall-winter-2026")
+                season_lower = (
+                    season_display.lower()
+                    .replace("fall winter", "fall-winter")
+                    .replace("spring summer", "spring-summer")
+                    .replace(" ", "-")
+                )
+
                 # Insert each item into DynamoDB
                 for item in items_found:
                     image_id = f"{db_original_name}_{item}".lower()
@@ -496,9 +501,11 @@ def process_images(input_folder: str):
                         'materials': analysis["material_decomposition"].get(item, "unknown"),
                         'color_hex': analysis["item_colors_hex"].get(item, "unknown"),
                         'color_name': analysis["item_colors_name"].get(item, "unknown"),
-                        'designer': metadata.get("designer", "unknown"),
+                        'designer': designer_display,
+                        'designer_lower': designer_lower,
                         'collection': metadata.get("collection", "unknown"),
-                        'season': metadata.get("season", "unknown"),
+                        'season': season_display,
+                        'season_lower': season_lower,
                         'event': metadata.get("event", "unknown"),
                         'runway_date': RUNWAY_DATE_ISO,
                     }
