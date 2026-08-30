@@ -1,0 +1,410 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Runway Gallery production migration — Phase 1 (gallery data layer),
+  Phase 2 (authenticated likes), and Phase 3 (trends). Covers only the
+  resources newly added by this migration. Every existing Lambda in
+  lamdbas/ remains manually deployed and is untouched by this template —
+  see the memory entry "Runway Gallery migration Phase 0" for the
+  deployment-scope decision.
+  #
+  # Phase 2's JWT authorizer targets Cognito pool eu-west-2_sCT3ddeep —
+  # the pool project/src/contexts/AuthContext.tsx actually issues tokens
+  # from today. This is deliberately NOT the same pool the older Moonboard
+  # Lambdas' authorizer checks (eu-west-2_GUhx1pI4w, in fashion-api) —
+  # those two are different pools, which looks like a pre-existing bug in
+  # the Moonboard auth wiring, left alone here as out of scope.
+
+Parameters:
+  RunwayLooksStreamArn:
+    Type: String
+    Description: >
+      LatestStreamArn of the pre-existing RunwayLooks table (not
+      SAM-managed — it was created by src/dynamodb_setup.py). Enable its
+      stream first via that script's ensure_streams_enabled(), then get
+      the ARN with:
+        aws dynamodb describe-table --table-name RunwayLooks \
+          --query 'Table.LatestStreamArn' --output text
+  AppOrigin:
+    Type: String
+    Default: "http://localhost:5173"
+    Description: >
+      Origin Stripe Checkout redirects back to after success/cancel
+      (createCheckoutSession's success_url/cancel_url). Override at deploy
+      time once ui_prototypes/runway-gallery has a real deployed URL:
+        sam deploy --parameter-overrides AppOrigin=https://your-real-domain
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 10
+    MemorySize: 256
+    Architectures: [arm64]
+
+Resources:
+  RunwayGalleryApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins: ["*"]
+        AllowMethods: ["GET", "POST", "OPTIONS"]
+        AllowHeaders: ["Content-Type", "Authorization"]
+      Auth:
+        Authorizers:
+          CognitoAuthorizer:
+            JwtConfiguration:
+              issuer: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/eu-west-2_sCT3ddeep"
+              audience:
+                - kepksri5to5etol8ffr11t4g2
+            IdentitySource: "$request.header.Authorization"
+
+  RunwayLikesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: RunwayLikes
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: look_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH
+        - AttributeName: look_id
+          KeyType: RANGE
+
+  ToggleLikeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: toggleLike
+      CodeUri: lamdbas/toggleLike/
+      Handler: index.handler
+      # Writes RunwayLikes (Put/Delete on like) and atomically bumps
+      # RunwayLooks.like_count in the same transaction — hence needing
+      # write access to RunwayLooks too, not SAM-managed so referenced by
+      # ARN directly (same pattern as RunwayLooksStreamArn above).
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:DeleteItem
+              Resource: !GetAtt RunwayLikesTable.Arn
+            - Effect: Allow
+              Action:
+                - dynamodb:UpdateItem
+              Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/RunwayLooks"
+            - Effect: Allow
+              Action:
+                - dynamodb:TransactWriteItems
+              Resource:
+                - !GetAtt RunwayLikesTable.Arn
+                - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/RunwayLooks"
+      Events:
+        ToggleLike:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref RunwayGalleryApi
+            Path: /runway-looks/{look_id}/like
+            Method: POST
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  GetLikedLooksFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: getLikedLooks
+      CodeUri: lamdbas/getLikedLooks/
+      Handler: index.handler
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref RunwayLikesTable
+      Events:
+        GetLikedLooks:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref RunwayGalleryApi
+            Path: /runway-likes
+            Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  RunwaySubscriptionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: RunwaySubscriptions
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: stripe_customer_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: CustomerIndex
+          KeySchema:
+            - AttributeName: stripe_customer_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  CreateCheckoutSessionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: createCheckoutSession
+      CodeUri: lamdbas/createCheckoutSession/
+      Handler: index.handler
+      Environment:
+        Variables:
+          APP_ORIGIN: !Ref AppOrigin
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/runway-gallery/stripe-secret-key"
+            - Effect: Allow
+              Action:
+                - kms:Decrypt
+              Resource: !Sub "arn:aws:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/ssm"
+      Events:
+        CreateCheckoutSession:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref RunwayGalleryApi
+            Path: /billing/checkout-session
+            Method: POST
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  CreatePortalSessionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: createPortalSession
+      CodeUri: lamdbas/createPortalSession/
+      Handler: index.handler
+      Environment:
+        Variables:
+          APP_ORIGIN: !Ref AppOrigin
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref RunwaySubscriptionsTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/runway-gallery/stripe-secret-key"
+            - Effect: Allow
+              Action:
+                - kms:Decrypt
+              Resource: !Sub "arn:aws:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/ssm"
+      Events:
+        CreatePortalSession:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref RunwayGalleryApi
+            Path: /billing/portal-session
+            Method: POST
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  GetSubscriptionStatusFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: getSubscriptionStatus
+      CodeUri: lamdbas/getSubscriptionStatus/
+      Handler: index.handler
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref RunwaySubscriptionsTable
+      Events:
+        GetSubscriptionStatus:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref RunwayGalleryApi
+            Path: /billing/status
+            Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  StripeWebhookFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: stripeWebhook
+      CodeUri: lamdbas/stripeWebhook/
+      Handler: index.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RunwaySubscriptionsTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/runway-gallery/stripe-webhook-secret"
+            - Effect: Allow
+              Action:
+                - kms:Decrypt
+              Resource: !Sub "arn:aws:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/ssm"
+      Events:
+        # Public on purpose — Stripe calls this directly, no Cognito
+        # authorizer. Authenticity is verified via Stripe's own request
+        # signature inside the handler instead (see index.mjs).
+        StripeWebhook:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref RunwayGalleryApi
+            Path: /billing/webhook
+            Method: POST
+
+  ManageSubscriptionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: manageSubscription
+      CodeUri: lamdbas/manageSubscription/
+      Handler: index.handler
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref RunwaySubscriptionsTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/runway-gallery/stripe-secret-key"
+            - Effect: Allow
+              Action:
+                - kms:Decrypt
+              Resource: !Sub "arn:aws:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/ssm"
+      Events:
+        ManageSubscription:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref RunwayGalleryApi
+            Path: /billing/subscription-action
+            Method: POST
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  GetRunwayLookItemsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: getRunwayLookItems
+      CodeUri: lamdbas/getRunwayLookItems/
+      Handler: index.handler
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: RunwayItems
+      Events:
+        GetLookItems:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref RunwayGalleryApi
+            Path: /runway-looks/{look_id}/items
+            Method: GET
+
+  GetSignedImageUrlsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: getSignedImageUrls
+      CodeUri: lamdbas/getSignedImageUrls/
+      Handler: index.handler
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref RunwaySubscriptionsTable
+        - Statement:
+            # Needed for presigned URLs to actually be valid, independent of
+            # whether the bucket itself is public or private — the signature
+            # reflects this role's own permission, not the bucket policy.
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+              Resource: !Sub "arn:aws:s3:::runwayimages/*"
+      Events:
+        # Authenticated + entitled: signs any requested look_ids, no cap.
+        SignImages:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref RunwayGalleryApi
+            Path: /images/sign
+            Method: POST
+            Auth:
+              Authorizer: CognitoAuthorizer
+        # Public, anonymous preview path — hard-capped at 50 look_ids
+        # server-side (see index.mjs) regardless of what's requested.
+        SignPreviewImages:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref RunwayGalleryApi
+            Path: /images/sign-preview
+            Method: POST
+
+  RegenerateRunwayCacheFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: regenerateRunwayCache
+      CodeUri: lamdbas/regenerateRunwayCache/
+      Handler: index.handler
+      Timeout: 60
+      MemorySize: 512
+      ReservedConcurrentExecutions: 1
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: RunwayLooks
+        - S3WritePolicy:
+            BucketName: fashion-trends-cache
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:DescribeStream
+                - dynamodb:GetRecords
+                - dynamodb:GetShardIterator
+                - dynamodb:ListStreams
+              Resource: !Ref RunwayLooksStreamArn
+      Events:
+        RunwayLooksStream:
+          Type: DynamoDB
+          Properties:
+            Stream: !Ref RunwayLooksStreamArn
+            StartingPosition: LATEST
+            BatchSize: 100
+            MaximumBatchingWindowInSeconds: 60
+
+  ComputeRunwayTrendsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: computeRunwayTrends
+      CodeUri: lamdbas/computeRunwayTrends/
+      Handler: index.handler
+      Timeout: 60
+      MemorySize: 512
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: RunwayLooks
+        - S3WritePolicy:
+            BucketName: fashion-trends-cache
+      Events:
+        Nightly:
+          Type: Schedule
+          Properties:
+            # 03:00 UTC daily — runway data doesn't change intraday, and
+            # this runs well after the DynamoDB-write-driven gallery cache
+            # (regenerateRunwayCache) has already settled from any same-day load.
+            Schedule: cron(0 3 * * ? *)
+            Enabled: true
+
+Outputs:
+  ApiUrl:
+    Description: Base URL for the Runway Gallery public API
+    Value: !Sub "https://${RunwayGalleryApi}.execute-api.${AWS::Region}.amazonaws.com"
+  RunwayCacheIndexUrl:
+    Description: Public URL of the regenerated gallery index (fetched directly by the frontend, no Lambda in this read path)
+    Value: "https://fashion-trends-cache.s3.eu-west-2.amazonaws.com/runway_looks_index.json"
+  RunwayCacheFacetsUrl:
+    Description: Public URL of the regenerated facets file
+    Value: "https://fashion-trends-cache.s3.eu-west-2.amazonaws.com/runway_facets.json"
+  RunwayTrendsUrl:
+    Description: Public URL of the precomputed trends file (read by project/src/components/TrendsDashboard.tsx)
+    Value: "https://fashion-trends-cache.s3.eu-west-2.amazonaws.com/runway_trends.json"
