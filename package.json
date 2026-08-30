@@ -1,8 +1,0 @@
-{
-  "dependencies": {
-    "recharts": "^3.2.1"
-  },
-  "devDependencies": {
-    "@types/react-router-dom": "^5.3.3"
-  }
-}
